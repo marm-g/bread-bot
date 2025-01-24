@@ -1,13 +1,12 @@
-use std::env;
-
-use datetime::DateTime;
+use chrono::prelude::*;
+use dotenv::dotenv;
 use serenity::{
     all::{Context, EventHandler, GatewayIntents, Message, Ready},
     async_trait, Client,
 };
 use sqlite::{ConnectionThreadSafe, State};
-extern crate dtt;
-use dtt::*;
+use std::convert::TryFrom;
+use std::env;
 
 struct Handler;
 
@@ -32,12 +31,23 @@ fn get_all_posts(conn: ConnectionThreadSafe) -> Vec<BreadPost> {
 // BPPD = bread posts per day
 fn calculate_bppd(posts: &Vec<BreadPost>) -> f32 {
     let last_post_date =
-        DateTime::parse(posts[0].clone().date.as_str()).expect("Valid date string");
+        DateTime::parse_from_rfc3339(posts[0].clone().date.as_str()).expect("Valid date string");
     let first_post_date =
-        DateTime::parse(posts[posts.len() - 1].clone().date.as_str()).expect("Valid date string");
-    let diff = first_post_date.duration_since(&last_post_date);
+        DateTime::parse_from_rfc3339(posts[posts.len() - 1].clone().date.as_str())
+            .expect("Valid date string");
+    let diff = first_post_date.signed_duration_since(&last_post_date);
     let num_posts = f32::from(u16::try_from(posts.len()).unwrap());
-    (num_posts / (diff.as_seconds_f32() / 60.0 / 60.0 / 24.0)).abs()
+    (num_posts / (diff.num_seconds() as f32 / 60.0 / 60.0 / 24.0)).abs()
+}
+
+fn calculate_time_since_last_post(posts: &Vec<BreadPost>) -> i64 {
+    let most_recent_post =
+        DateTime::parse_from_rfc3339(posts[0].clone().date.as_str()).expect("Valid date string");
+    let previous_post =
+        DateTime::parse_from_rfc3339(posts[1].clone().date.as_str())
+            .expect("Valid date string");
+    let diff = most_recent_post.signed_duration_since(&previous_post);
+    diff.num_days()
 }
 
 #[async_trait]
@@ -47,9 +57,10 @@ impl EventHandler for Handler {
     // Event handlers are dispatched through a threadpool, and so multiple events can be
     // dispatched simultaneously.
     async fn message(&self, ctx: Context, msg: Message) {
-
-        let target_user_id = env::var("TARGET_USER").expect("Expected TARGET_USER to be in the environment");
-        let target_channel_id = env::var("TARGET_CHANNEL").expect("Expected TARGET_CHANNEL to be in the environment");
+        let target_user_id =
+            env::var("TARGET_USER").expect("Expected TARGET_USER to be in the environment");
+        let target_channel_id =
+            env::var("TARGET_CHANNEL").expect("Expected TARGET_CHANNEL to be in the environment");
 
         if msg.author.id.to_string() == target_user_id
             && msg.channel_id.to_string() == target_channel_id
@@ -67,10 +78,11 @@ impl EventHandler for Handler {
             conn.execute(query).unwrap();
 
             let all_posts = get_all_posts(conn);
+            let diff = calculate_time_since_last_post(&all_posts);
 
             if let Err(why) = msg
                 .channel_id
-                .say(&ctx.http, format!("New bread post!\nThis is bread post number {}.\nCurrent BPPD is {}\nLink to previous post: {}", all_posts.len(), calculate_bppd(&all_posts), all_posts[1].message_url))
+                .say(&ctx.http, format!("New bread post!\nThis is bread post number {}.\nIt has been {} days since the last bread post.\nCurrent BPPD is {}\nLink to previous post: {}", all_posts.len(), diff, calculate_bppd(&all_posts), all_posts[1].message_url))
                 .await
             {
                 println!("Error sending message: {why:?}");
@@ -90,6 +102,7 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
     // Configure the client with your Discord bot token in the environment.
     let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN to be in the environment");
     // Set gateway intents, which decides what events the bot will be notified about
