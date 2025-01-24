@@ -44,18 +44,13 @@ fn calculate_time_since_last_post(posts: &Vec<BreadPost>) -> i64 {
     let most_recent_post =
         DateTime::parse_from_rfc3339(posts[0].clone().date.as_str()).expect("Valid date string");
     let previous_post =
-        DateTime::parse_from_rfc3339(posts[1].clone().date.as_str())
-            .expect("Valid date string");
+        DateTime::parse_from_rfc3339(posts[1].clone().date.as_str()).expect("Valid date string");
     let diff = most_recent_post.signed_duration_since(&previous_post);
     diff.num_days()
 }
 
 #[async_trait]
 impl EventHandler for Handler {
-    // Set a handler for the `message` event. This is called whenever a new message is received.
-    //
-    // Event handlers are dispatched through a threadpool, and so multiple events can be
-    // dispatched simultaneously.
     async fn message(&self, ctx: Context, msg: Message) {
         let target_user_id =
             env::var("TARGET_USER").expect("Expected TARGET_USER to be in the environment");
