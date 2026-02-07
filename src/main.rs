@@ -52,13 +52,10 @@ fn calculate_time_since_last_post(posts: &Vec<BreadPost>) -> i64 {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        let target_user_id =
-            env::var("TARGET_USER").expect("Expected TARGET_USER to be in the environment");
         let target_channel_id =
             env::var("TARGET_CHANNEL").expect("Expected TARGET_CHANNEL to be in the environment");
 
-        if msg.author.id.to_string() == target_user_id
-            && msg.channel_id.to_string() == target_channel_id
+        if msg.channel_id.to_string() == target_channel_id
             && !msg.attachments.is_empty()
             && msg.content.to_lowercase().contains("bread")
         {
